@@ -31,10 +31,25 @@ contract JewelryLifecycle {
     event OwnershipTransferred(uint256 id, address previousOwner, address newOwner);
 
     // 权限控制
-    modifier onlyMiningCompany() { require(msg.sender == miningCompany, "Not authorized"); _; }
-    modifier onlyCuttingCompany() { require(msg.sender == cuttingCompany, "Not authorized"); _; }
-    modifier onlyGradingLab() { require(msg.sender == gradingLab, "Not authorized"); _; }
-    modifier onlyJewelryMaker() { require(msg.sender == jewelryMaker, "Not authorized"); _; }
+    modifier onlyMiningCompany() {
+        require(msg.sender == miningCompany, "Not authorized");
+        _;
+    }
+
+    modifier onlyCuttingCompany() {
+        require(msg.sender == cuttingCompany, "Not authorized");
+        _;
+    }
+
+    modifier onlyGradingLab() {
+        require(msg.sender == gradingLab, "Not authorized");
+        _;
+    }
+
+    modifier onlyJewelryMaker() {
+        require(msg.sender == jewelryMaker, "Not authorized");
+        _;
+    }
 
     // 设置角色
     function setRoles(
@@ -54,9 +69,9 @@ contract JewelryLifecycle {
         jewelryCount++;
         jewelries[jewelryCount] = Jewelry({
             id: jewelryCount,
-            CAId: 0,
+            CAId: 0, // 初始时没有证书
             description: _description,
-            currentOwner: msg.sender,
+            currentOwner: msg.sender, // 当前所有者是开采公司
             status: Status.MINED,
             timestamp: block.timestamp
         });
@@ -67,6 +82,7 @@ contract JewelryLifecycle {
     function updateStatusToPolished(uint256 _id) public onlyCuttingCompany {
         Jewelry storage jewelry = jewelries[_id];
         require(jewelry.status == Status.MINED, "Invalid state transition");
+        
         jewelry.status = Status.POLISHED;
         jewelry.timestamp = block.timestamp;
         emit StatusUpdated(_id, Status.POLISHED, msg.sender);
@@ -78,7 +94,7 @@ contract JewelryLifecycle {
         require(jewelry.status == Status.POLISHED, "Invalid state transition");
         require(jewelry.CAId == 0, "Certificate already generated");
 
-        jewelry.CAId = _CAId;
+        jewelry.CAId = _CAId; // 为珠宝生成证书并更新证书ID
         jewelry.status = Status.GRADED;
         jewelry.timestamp = block.timestamp;
         emit CertificateGenerated(_id, _CAId, msg.sender);
@@ -88,6 +104,7 @@ contract JewelryLifecycle {
     function updateStatusToInStock(uint256 _id) public onlyJewelryMaker {
         Jewelry storage jewelry = jewelries[_id];
         require(jewelry.status == Status.GRADED, "Invalid state transition");
+
         jewelry.status = Status.IN_STOCK;
         jewelry.timestamp = block.timestamp;
         emit StatusUpdated(_id, Status.IN_STOCK, msg.sender);
@@ -97,6 +114,7 @@ contract JewelryLifecycle {
     function updateStatusToDesigned(uint256 _id) public onlyJewelryMaker {
         Jewelry storage jewelry = jewelries[_id];
         require(jewelry.status == Status.IN_STOCK, "Invalid state transition");
+
         jewelry.status = Status.DESIGNED;
         jewelry.timestamp = block.timestamp;
         emit StatusUpdated(_id, Status.DESIGNED, msg.sender);
@@ -108,14 +126,36 @@ contract JewelryLifecycle {
         require(jewelry.currentOwner == msg.sender, "You are not the owner");
         require(_newOwner != address(0), "Invalid address");
 
+        // 只有当状态为 DESIGNED 或 SOLD 时，才能转移所有权
+        require(
+            jewelry.status == Status.DESIGNED || jewelry.status == Status.SOLD,
+            "Ownership can only be transferred when jewelry is designed or sold"
+        );
+
         address previousOwner = jewelry.currentOwner;
         jewelry.currentOwner = _newOwner;
         jewelry.timestamp = block.timestamp;
 
+        // 如果珠宝状态是 IN_STOCK 或 DESIGNED，更新为 SOLD 状态
         if (jewelry.status == Status.IN_STOCK || jewelry.status == Status.DESIGNED) {
             jewelry.status = Status.SOLD;
         }
 
         emit OwnershipTransferred(_id, previousOwner, _newOwner);
+    }
+
+    // 获取所有珠宝信息（返回结构体数组）
+    function getAllJewelry() public view returns (Jewelry[] memory) {
+        Jewelry[] memory allJewelry = new Jewelry[](jewelryCount); // 创建一个长度为珠宝总数的数组
+        for (uint256 i = 1; i <= jewelryCount; i++) {
+            allJewelry[i - 1] = jewelries[i]; // 填充珠宝信息
+        }
+        return allJewelry; // 返回数组
+    }
+
+    // 获取指定ID的珠宝信息
+    function getJewelry(uint256 _id) public view returns (Jewelry memory) {
+        Jewelry storage jewelry = jewelries[_id]; // 获取指定ID的珠宝
+        return jewelry; // 直接返回珠宝结构体
     }
 }
